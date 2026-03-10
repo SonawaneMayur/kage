@@ -1,0 +1,22 @@
+Field,Type,Description,Required,Happy_Scenario,Error_Scenario
+event_type,string,"Always 'task_run'",Yes,"task_run","task_run"
+timestamp,datetime,"UTC timestamp when task ended",Yes,"2026-03-06T10:02:45.123Z","2026-03-06T10:02:45.123Z"
+pipeline_name,string,"Pipeline identifier",Yes,"customer_360","customer_360"
+job_id,string,"Parent job identifier",Yes,"job_abc123_xyz789","job_abc123_xyz789"
+task_id,string,"Unique task identifier",Yes,"task_def456_ghi012","task_def456_ghi012"
+layer,string,"Medallion layer",Yes,"bronze","bronze"
+task_name,string,"Human-readable task name",Yes,"clean_orders","clean_orders"
+environment,string,"Environment tag",No,"prod","prod"
+status,string,"SUCCESS | FAILED | CANCELLED",Yes,"SUCCESS","FAILED"
+start_timestamp,datetime,"Task start time",Yes,"2026-03-06T10:01:15.000Z","2026-03-06T10:01:15.000Z"
+end_timestamp,datetime,"Task end time",Yes,"2026-03-06T10:02:45.123Z","2026-03-06T10:02:45.123Z"
+duration_ms,integer,"Task duration ms",No,90123,90123
+datasets_read,integer,"Datasets read in task",No,1,1
+datasets_written,integer,"Datasets written in task",No,1,0
+total_records_read,integer,"Records read in task",No,150000,150000
+total_records_written,integer,"Records written in task",No,128394,0
+error_message,string,"**ERROR LOCATION**: Task failure reason",No_when_success,null,"**Null values detected in required column 'customer_id'**"
+error_stacktrace,string,"**ERROR LOCATION**: Full stack trace",No_when_success,null,"**pyspark.sql.utils.AnalysisException: Cannot write nulls to non-nullable column\n  File '/notebook.py', line 67**"
+parent_task_id,string,"Parent task ID (nested tasks)",No,null,null
+custom_tags,json,"Metadata",No,"{'spark_partitions':200}","{'spark_partitions':200}"
+status_summary,text,"Happy: Metrics populated. Error: error fields populated, write metrics null","SUCCESS: 128k records to bronze_orders","FAILED: Null constraint violation logged"

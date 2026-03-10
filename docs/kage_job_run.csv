@@ -1,0 +1,22 @@
+Field,Type,Description,Required,Happy_Scenario,Error_Scenario
+event_type,string,"Always 'job_run'",Yes,"job_run","job_run"
+timestamp,datetime,"UTC timestamp when job ended",Yes,"2026-03-06T10:05:23.456Z","2026-03-06T10:05:23.456Z"
+pipeline_name,string,"Pipeline identifier",Yes,"customer_360","customer_360"
+job_id,string,"Unique job identifier",Yes,"job_abc123_xyz789","job_abc123_xyz789"
+job_name,string,"Human-readable job name",Yes,"daily_etl","daily_etl"
+environment,string,"Environment tag",No,"prod","prod"
+status,string,"SUCCESS | FAILED | CANCELLED",Yes,"SUCCESS","FAILED"
+start_timestamp,datetime,"Job start time",Yes,"2026-03-06T10:00:00.000Z","2026-03-06T10:00:00.000Z"
+end_timestamp,datetime,"Job end time",Yes,"2026-03-06T10:05:23.456Z","2026-03-06T10:05:23.456Z"
+duration_ms,integer,"Total duration ms",No,323456,323456
+task_count,integer,"Tasks executed",No,5,5
+successful_tasks,integer,"Successful tasks",No,5,2
+failed_tasks,integer,"Failed tasks",No,0,3
+datasets_read,integer,"Datasets read",No,3,3
+datasets_written,integer,"Datasets written",No,2,1
+total_records_read,integer,"Total records read",No,150000,150000
+total_records_written,integer,"Total records written",No,8472,0
+error_message,string,"**ERROR LOCATION**: Job failure reason",No_when_success,null,"**S3 bucket connection timeout after 30s**"
+error_stacktrace,string,"**ERROR LOCATION**: Full stack trace",No_when_success,null,"**java.io.IOException: Unable to connect to s3://logs-bucket\n  at com.amazonaws.services.s3...**"
+custom_tags,json,"Metadata",No,"{'team':'data-eng'}","{'team':'data-eng'}"
+status_summary,text,"Happy: All metrics populated. Error: error fields populated, metrics partial","SUCCESS: 5/5 tasks, 8k records written","FAILED: 3/5 tasks failed, S3 timeout"

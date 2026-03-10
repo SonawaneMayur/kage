@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+kage/__init__.py
+kage/core.py
+kage/schemas.py
+kage/transports.py
+kage.egg-info/PKG-INFO
+kage.egg-info/SOURCES.txt
+kage.egg-info/dependency_links.txt
+kage.egg-info/requires.txt
+kage.egg-info/top_level.txt
+kage/adapters/__init__.py
+kage/adapters/databricks.py
+kage/utils/__init__.py
+kage/utils/databricks_analytics.py
+tests/test_core.py

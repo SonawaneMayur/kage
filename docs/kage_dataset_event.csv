@@ -1,0 +1,24 @@
+Field,Type,Description,Required,Happy_Scenario,Error_Scenario
+event_type,string,"Always 'dataset_event'",Yes,"dataset_event","dataset_event"
+timestamp,datetime,"UTC timestamp of operation",Yes,"2026-03-06T12:34:56.789Z","2026-03-06T12:35:10.123Z"
+pipeline_name,string,"Pipeline identifier",Yes,"customer_360","customer_360"
+job_id,string,"Parent job identifier",Yes,"job_abc123_xyz789","job_abc123_xyz789"
+task_id,string,"Parent task identifier",Yes,"task_def456_ghi012","task_def456_ghi012"
+event_action,string,"READ | WRITE",Yes,"WRITE","WRITE"
+layer,string,"Medallion layer",Yes,"bronze","bronze"
+dataset_name,string,"Table name",Yes,"bronze_orders","bronze_orders"
+record_count,integer,"Records processed",No,128394,null
+environment,string,"Environment tag",No,"prod","prod"
+upstream_datasets,array[string],"Source datasets",No,"['landing_orders']","['landing_orders']"
+schema_fields,json,"Dataset schema",No,"['id:string','amount:double']","['id:string','amount:double']"
+schema_hash,string,"Schema hash",No,"sha256:abc123def456","sha256:abc123def456"
+file_count,integer,"Files written",No,42,null
+total_file_size_bytes,integer,"Total bytes written",No,524288000,null
+partition_columns,array[string],"Partition columns",No,"['dt','region']","['dt','region']"
+partition_values,json,"Partition values",No,"{'dt':'2026-03-06','region':'US'}","{'dt':'2026-03-06','region':'US'}"
+operation_mode,string,"Write mode",No,"overwrite","overwrite"
+spark_partitions,integer,"Spark partitions used",No,200,null
+error_message,string,"**ERROR LOCATION**: Human error desc",No_when_success,null,"**Table not found: bronze_orders**"
+error_stacktrace,string,"**ERROR LOCATION**: Full stack trace",No_when_success,null,"**pyspark.sql.utils.AnalysisException: Table 'bronze_orders' not found\nFile '/notebook.py', line 45**"
+custom_tags,json,"Metadata",No,"{'source_system':'CRM'}","{'source_system':'CRM'}"
+status_summary,text,"Happy: All metrics populated. Error: error_message+stacktrace populated, metrics null","N/A","SUCCESS: 128k records to bronze_orders","FAILED: Table not found error logged"
