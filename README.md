@@ -5,22 +5,16 @@
 Medallion-aware logging for PySpark, Spark SQL, Pure Python, Scala, dbt, Airflow  
 Zero-disruption integration | Auto-captures ALL table operations & errors
 
-## Why KAGE: Beyond Databricks Job Logs
+## Why KAGE: Business Logs vs. System Logs
 
-Databricks captures **infrastructure & execution logs** (compute, scheduling, API calls). KAGE captures **business observability** that matters:
+Traditional observability tools capture **system metrics** (CPU, memory, network). KAGE captures **business metrics** that matter:
+- **Data lineage**: Which tables feed which pipelines?
+- **Volume tracking**: How many records moved through each layer?
+- **Pipeline health**: Did the job succeed? Where did it fail?
+- **Data quality signals**: Record counts, layer progression, bottlenecks
+- **Error tracking**: Automatic capture of failures, stack traces, and root causes
 
-| Aspect | Databricks Logs | KAGE |
-|--------|-----------------|------|
-| **Data Lineage** | ❌ No table-level tracking | ✅ Auto-captures reads/writes per layer |
-| **Volume Metrics** | ❌ Job duration only | ✅ Record counts, bottlenecks, layer progression |
-| **Medallion Awareness** | ❌ Generic job logs | ✅ Landing→Bronze→Silver→Gold visibility |
-| **Error Context** | ❌ Stack traces only | ✅ Layer, dataset, record count, lineage on failure |
-| **SQL Queryable** | ❌ UI dashboards only | ✅ Direct SQL on partitioned JSONL logs |
-| **Multi-Engine** | ❌ Databricks only | ✅ PySpark, Pure Python, Scala, dbt, Airflow |
-| **Zero Code Changes** | ❌ Manual instrumentation | ✅ One decorator or listener attachment |
-
-KAGE **complements** Databricks job logs with **business-grade data observability**—bridging infrastructure monitoring and data quality intelligence.
-
+KAGE fills the gap between infrastructure monitoring and business intelligence.
 
 ## 🚀 Quickstart
 
@@ -83,13 +77,13 @@ except Exception as e:
 ```sql
 -- Find all failed jobs
 SELECT pipeline_name, job_id, error_type, timestamp
-FROM json.`kage-logs/pyspark/job_run/`
+FROM json.`kage-logs/pyspark/event_type=job_run/`
 WHERE status='FAILED'
 ORDER BY timestamp DESC;
 
 -- Error trends by layer
 SELECT layer, error_type, COUNT(*) count
-FROM json.`kage-logs/pyspark/dataset_event/`
+FROM json.`kage-logs/pyspark/event_type=dataset_event/`
 WHERE status='FAILED'
 GROUP BY 1, 2;
 ```
@@ -131,17 +125,17 @@ except Exception as e:
 ```sql
 -- Pipeline health dashboard
 SELECT pipeline_name, status, COUNT(*) 
-FROM json.`kage-logs/pyspark/job_run/` 
+FROM json.`kage-logs/pyspark/event_type=job_run/` 
 GROUP BY 1,2;
 
 -- Layer volumes
 SELECT layer, SUM(record_count) rows, COUNT(*) ops
-FROM json.`kage-logs/pyspark/dataset_event/` 
+FROM json.`kage-logs/pyspark/event_type=dataset_event/` 
 GROUP BY layer ORDER BY rows DESC;
 
 -- Gold table lineage
 SELECT dataset_name, upstream_datasets, record_count
-FROM json.`kage-logs/pyspark/dataset_event/` 
+FROM json.`kage-logs/pyspark/event_type=dataset_event/` 
 WHERE layer='gold' AND event_action='WRITE';
 ```
 
