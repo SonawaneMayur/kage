@@ -34,12 +34,90 @@ logger.dataset_write("bronze", "orders", record_count=128394)
 logger.job_end(job_id, "SUCCESS")
 ```
 
-### PySpark - Zero Code Changes (2 lines!)
+### Declarative `@` API - Zero-Boilerplate Logging
+The decorators wrap your existing functions so KAGE logs job, task, and dataset
+events automatically — including SUCCESS/FAILED status with full stack traces.
+
+```python
+from kage import configure, pipeline, task, dataset
+
+configure(base_path="./kage-logs", pipeline_name="customer_360")
+
+@dataset(layer="bronze", dataset_name="bronze_orders",
+         upstream_datasets=["raw_orders_api"])
+def clean_orders(df):
+    return df.filter(df.amount > 0)        # record_count auto-inferred
+
+@task(layer="bronze", task_name="bronze_clean")
+def bronze_stage(df):
+    return clean_orders(df)
+
+@pipeline("daily_etl")                     # captures errors, emits SUCCESS/FAILED
+def run():
+    bronze_stage(source_df)
+```
+
+`@pipeline` works without parens too (`@pipeline` uses the function name as
+`job_name`). All decorators re-raise exceptions after logging — KAGE never
+swallows your errors.
+
+### Spark Declarative Pipelines (DLT / Lakeflow) - One Decorator
+Stack KAGE on top of `@dlt.table` / `@dlt.view` without rewriting your DLT
+code. KAGE logs a `dataset_event` for every materialization, captures
+exceptions, and skips `.count()` by default so it never doubles your compute.
+
+```python
+import dlt
+from kage import configure
+from kage.integrations.spark_declarative import (
+    kage_dlt_table, kage_dlt_view, kage_dlt_expectations,
+)
+
+configure(base_path="/Volumes/cat/logs/kage", pipeline_name="orders", platform="databricks")
+
+@kage_dlt_table(layer="bronze", upstream_datasets=["landing.orders"])
+def bronze_orders():
+    return spark.readStream.format("cloudFiles").load("/landing/orders")
+
+@kage_dlt_table(layer="silver", upstream_datasets=["bronze_orders"])
+@kage_dlt_expectations(
+    ("expect_or_drop", "valid_amount", "amount > 0"),
+    ("expect_or_fail", "non_null_id", "order_id IS NOT NULL"),
+)
+def silver_orders():
+    return dlt.read_stream("bronze_orders")
+```
+
+#### Implementation steps (DLT pipeline)
+1. **Build the wheel** - `python -m build` from the repo root.
+2. **Upload to workspace** - drop `dist/kage-1.1.0-py3-none-any.whl` in a Volume or Workspace folder.
+3. **Wire as DLT library** - in the pipeline's *Libraries* config, point at the wheel.
+4. **Configure once at notebook top** - `configure(base_path=..., platform="databricks")`.
+5. **Replace `@dlt.table` with `@kage_dlt_table(layer=..., upstream_datasets=[...])`**. Keep `@kage_dlt_expectations(...)` for quality rules.
+6. **Run the pipeline** - logs land under `{base_path}/event_type=dataset_event/dt=.../part-*.jsonl` and are immediately SQL-queryable.
+
+#### Case handling cheat sheet
+| Scenario | What to do | Resulting KAGE event |
+| --- | --- | --- |
+| Positive: standard batch table | `@kage_dlt_table(layer=..., upstream_datasets=[...])` | `WRITE`, `status=SUCCESS`, `record_count` (when `skip_count=False`) |
+| Positive: quality rules | Stack `@kage_dlt_expectations(...)` above `@kage_dlt_table` | DLT enforces; KAGE logs SUCCESS with `extra_fields` |
+| Negative: function raises | Nothing extra - KAGE wraps automatically | `status=FAILED` with `error_type`/`error_message`/`stack_trace`, then re-raises |
+| Negative: `expect_or_fail` fires | Standard DLT behaviour | KAGE logs the upstream table SUCCESS; downstream FAILED is captured by DLT events |
+| Extreme: empty DataFrame | `skip_count=False` to record the zero | `record_count=0`, `status=SUCCESS` |
+| Extreme: streaming source | Default `skip_count=True`; `isStreaming` is auto-detected | `record_count=0`, no blocking |
+| Extreme: very large batch | Keep `skip_count=True` (default) | `record_count=0` in KAGE; cross-reference DLT metrics by `dataset_name` |
+| Extreme: need exact count without double action | `record_count_fn=` with `DataFrame.observe()` | accurate count, single pass |
+
+Full positive/negative/extreme example notebook:
+[`examples/spark_declarative_cases.py`](examples/spark_declarative_cases.py).
+Minimal quickstart: [`examples/spark_declarative_quickstart.py`](examples/spark_declarative_quickstart.py).
+
+### PySpark - Spark Listener (preview)
 ```python
 from kage import KageLogger, install_spark_listener
 
 logger = KageLogger(base_path="/dbfs/kage-logs", pipeline_name="auto_pipeline")
-install_spark_listener(spark, logger)  # Auto-logs reads, writes, AND errors
+install_spark_listener(spark, logger)  # listener stub — full hook in progress
 
 df = spark.read.table("landing.orders")
 df_clean = df.filter(df.amount > 0)
@@ -90,12 +168,37 @@ GROUP BY 1, 2;
 
 ## Integration Patterns
 
-### Decorator Pattern
+### Decorator Pattern (Declarative API)
+Three composable decorators map directly to KAGE's event types:
+
+| Decorator | Wraps | Emits |
+| --- | --- | --- |
+| `@pipeline(name=None, **fields)` | a job/run | `job_run` start + end (FAILED on raise) |
+| `@task(layer, task_name=None, **fields)` | a medallion-layer step | `task_run` start + end |
+| `@dataset(layer, dataset_name=None, action="WRITE", upstream_datasets=[...])` | a function that produces/reads data | `dataset_event` with auto record_count |
+
 ```python
-@kage_pipeline(layer="bronze", pipeline_name="decorated_pipeline")
-def process_orders(df):
-    return df.filter(df.amount > 0)
+from kage import configure, pipeline, task, dataset
+
+configure(base_path="./kage-logs", pipeline_name="orders")
+
+@dataset(layer="gold", dataset_name="customer_summary",
+         upstream_datasets=["bronze.orders"])
+def aggregate(df):
+    return df.groupBy("customer_id").count()   # auto-counted (PySpark .count())
+
+@task(layer="gold", task_name="rollup")
+def rollup(df):
+    return aggregate(df)
+
+@pipeline("daily_etl", owner="data-platform")
+def run(df):
+    return rollup(df)
 ```
+
+**Record-count inference** for `@dataset`: PySpark `DataFrame.count()` → `int`
+return values → `len(result)` → 0. Pass `record_count_fn=lambda r: ...` for
+custom extractors.
 
 ### Medallion Architecture Support
 ```
@@ -170,6 +273,7 @@ pip install dist/kage-1.1.0-py3-none-any.whl
 
 ## API Reference
 
+### Imperative
 ```python
 logger = KageLogger(base_path="./logs", pipeline_name="demo")
 logger.job_start("daily_job")
@@ -177,7 +281,40 @@ logger.task_start(layer="bronze", task_name="clean")
 logger.dataset_write(layer="gold", dataset_name="summary", record_count=1000)
 logger.dataset_read(layer="bronze", dataset_name="orders", record_count=5000)
 logger.job_end(job_id, "SUCCESS")
-logger.job_end(job_id, "FAILED", error="reason")
+logger.job_end(job_id, "FAILED", error_message="reason")
+```
+
+### Declarative (`@`)
+```python
+from kage import configure, pipeline, task, dataset, set_default_logger
+
+configure(base_path="./logs", pipeline_name="demo")  # or set_default_logger(my_logger)
+
+@pipeline("daily_job")
+def run(): ...
+
+@task(layer="bronze", task_name="clean")
+def clean(df): ...
+
+@dataset(layer="gold", dataset_name="summary")
+def write_summary(df): ...
+```
+
+### Spark Declarative Pipelines (DLT / Lakeflow)
+```python
+from kage.integrations.spark_declarative import (
+    kage_dlt_table, kage_dlt_view, kage_dlt_expectations, is_dlt_available,
+)
+
+@kage_dlt_table(layer="bronze", upstream_datasets=["landing.x"],
+                comment="...", skip_count=True,           # default
+                record_count_fn=None,                       # optional override
+                extra_fields={"owner": "data-platform"})    # merged into custom_fields
+@kage_dlt_expectations(("expect_or_drop", "name", "constraint"), ...)
+def my_dlt_table(): ...
+
+@kage_dlt_view(layer="gold", upstream_datasets=["..."])     # logs action=READ
+def my_dlt_view(): ...
 ```
 
 ## ✅ Features

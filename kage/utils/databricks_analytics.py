@@ -19,10 +19,18 @@ Author: KAGE Analytics Team
 Version: 1.0
 """
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import *
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 import json
+
+if TYPE_CHECKING:
+    from pyspark.sql import DataFrame, SparkSession
+else:
+    try:
+        from pyspark.sql import DataFrame, SparkSession
+        from pyspark.sql.functions import *  # noqa: F401,F403
+    except ImportError:
+        DataFrame = None  # type: ignore
+        SparkSession = None  # type: ignore
 
 def load_kage_logs(log_path: str, spark: SparkSession) -> Dict[str, DataFrame]:
     """
@@ -652,6 +660,8 @@ def kage_dashboard(log_path: str, spark: SparkSession, revenue_tables: Optional[
         catalog: Optional Unity Catalog name
         schema: Optional schema name
     """
+    from pyspark.sql.functions import col
+
     print("🎯 KAGE EXECUTIVE DASHBOARD + ONTOLOGY")
     print("=" * 80)
     

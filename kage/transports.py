@@ -3,6 +3,7 @@ KAGE Transports - PRODUCTION READY v1.2 (Timestamp Fix + Robust)
 KAGE-PROPRIETARY-2026-v1.2
 """
 import json
+import os
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -51,6 +52,8 @@ class FileTransport(Transport):
 
             if DATABRICKS:
                 dbutils.fs.mkdirs(dir_path)
+            else:
+                os.makedirs(dir_path, exist_ok=True)
 
             self._write_batch(dir_path, events)
             print(f"✅ Wrote {len(events)} events")  # Success confirmation

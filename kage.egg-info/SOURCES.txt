@@ -1,3 +1,4 @@
+LICENSE
 README.md
 pyproject.toml
 kage/__init__.py

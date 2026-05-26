@@ -120,8 +120,9 @@ class KageLogger:
         }
         self._safe_emit(event_dict)
 
-    def dataset_read(self, layer: str, dataset_name: str, record_count: int = 0,
-                    upstream_datasets: List[str] = None, **kwargs) -> str:
+    def _dataset_event(self, action: str, layer: str, dataset_name: str,
+                       record_count: int = 0, upstream_datasets: List[str] = None,
+                       **kwargs) -> str:
         event_id = str(uuid.uuid4())
 
         event_dict = {
@@ -130,10 +131,10 @@ class KageLogger:
             "job_run_id": self.active_runs.get("job"),
             "task_run_id": self.active_runs.get("task"),
             "layer": layer,
-            "event_action": "READ",
+            "event_action": action,
             "dataset_name": dataset_name,
             "record_count": record_count,
-            "dataset_type": "table",
+            "dataset_type": kwargs.pop("dataset_type", "table"),
             "upstream_datasets": upstream_datasets or [],
             "custom_fields": dict(kwargs)
         }
@@ -141,10 +142,15 @@ class KageLogger:
         self._safe_emit(event_dict)
         return event_id
 
+    def dataset_read(self, layer: str, dataset_name: str, record_count: int = 0,
+                    upstream_datasets: List[str] = None, **kwargs) -> str:
+        return self._dataset_event("READ", layer, dataset_name, record_count,
+                                   upstream_datasets, **kwargs)
+
     def dataset_write(self, layer: str, dataset_name: str, record_count: int = 0,
                      upstream_datasets: List[str] = None, **kwargs) -> str:
-        kwargs["event_action"] = "WRITE"
-        return self.dataset_read(layer, dataset_name, record_count, upstream_datasets, **kwargs)
+        return self._dataset_event("WRITE", layer, dataset_name, record_count,
+                                   upstream_datasets, **kwargs)
 
 def install_spark_listener(spark, logger):
     """Spark auto-listener stub"""

@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>KAGE Architecture</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1f2630;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --bronze: #cd7f32;
+    --silver: #c0c0c0;
+    --gold: #ffd700;
+    --landing: #6c757d;
+    --success: #3fb950;
+    --danger: #f85149;
+    --warn: #d29922;
+    --pill: #21262d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px;
+  }
+  h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.01em; }
+  h2 { margin: 32px 0 12px; font-size: 18px; color: var(--accent); }
+  .sub { color: var(--muted); margin-bottom: 24px; }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
+         background: var(--pill); padding: 1px 6px; border-radius: 4px; }
+
+  .stack { display: flex; flex-direction: column; gap: 14px; max-width: 1100px; }
+  .layer {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    position: relative;
+  }
+  .layer-title {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 14px; }
+  .card p  { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .arrow {
+    text-align: center; color: var(--muted); font-size: 18px;
+    line-height: 0.5; margin: -4px 0;
+  }
+
+  /* Medallion strip */
+  .medallion {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    margin-top: 12px;
+  }
+  .layer-tag {
+    border-radius: 6px; padding: 8px 10px; text-align: center;
+    border: 1px solid var(--border); font-weight: 600;
+    background: var(--panel-2);
+  }
+  .layer-tag.landing { color: var(--landing); }
+  .layer-tag.bronze  { color: var(--bronze);  }
+  .layer-tag.silver  { color: var(--silver);  }
+  .layer-tag.gold    { color: var(--gold);    }
+
+  /* Event-type pills */
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    background: var(--pill); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+  }
+
+  /* Two-column for sidebars */
+  .grid-2 {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start;
+    max-width: 1100px;
+  }
+  @media (max-width: 820px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* Connector arrows in SVG between cards */
+  .connector { display: block; margin: -2px auto; }
+
+  /* Legend */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.api    { background: var(--accent); }
+  .dot.core   { background: #a371f7; }
+  .dot.io     { background: var(--success); }
+  .dot.store  { background: var(--warn); }
+  .dot.anal   { background: var(--danger); }
+
+  table { border-collapse: collapse; margin-top: 8px; font-size: 12.5px; width: 100%; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  td code { font-size: 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>KAGE — System Architecture</h1>
+<p class="sub">Universal pipeline observability. Two entry styles (imperative + declarative <code>@</code>), one event stream, lakehouse-ready partitioned JSONL.</p>
+
+<div class="legend">
+  <span><span class="dot api"></span>API Surface</span>
+  <span><span class="dot core"></span>Core Engine</span>
+  <span><span class="dot io"></span>Transports</span>
+  <span><span class="dot store"></span>Storage</span>
+  <span><span class="dot anal"></span>Analytics</span>
+</div>
+
+<h2>End-to-End Stack</h2>
+
+<div class="stack">
+
+  <!-- Layer 1: User code -->
+  <div class="layer">
+    <div class="layer-title"><span class="dot api"></span> 1. User Code</div>
+    <div class="row">
+      <div class="card"><h3>PySpark / Spark SQL</h3><p>batch + streaming ETL jobs</p></div>
+      <div class="card"><h3>Spark Declarative Pipelines</h3><p>DLT / Lakeflow <code>@dlt.table</code></p></div>
+      <div class="card"><h3>Airflow / dbt</h3><p>orchestration tasks</p></div>
+      <div class="card"><h3>Pure Python / Scala</h3><p>arbitrary pipelines</p></div>
+    </div>
+  </div>
+
+  <div class="arrow">▼</div>
+
+  <!-- Layer 2: API surface (split) -->
+  <div class="layer">
+    <div class="layer-title"><span class="dot api"></span> 2. KAGE API Surface</div>
+    <div class="row">
+      <div class="card">
+        <h3>Imperative — <code>KageLogger</code></h3>
+        <p><code>job_start</code> · <code>task_start</code> · <code>dataset_read</code> · <code>dataset_write</code> · <code>job_end</code></p>
+      </div>
+      <div class="card">
+        <h3>Declarative <code>@</code> decorators</h3>
+        <p><code>@pipeline</code> · <code>@task(layer=…)</code> · <code>@dataset(layer=…)</code> — auto error capture, auto record_count</p>
+      </div>
+      <div class="card">
+        <h3>DLT / Lakeflow integration</h3>
+        <p><code>@kage_dlt_table</code> · <code>@kage_dlt_view</code> · <code>@kage_dlt_expectations</code></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow">▼</div>
+
+  <!-- Layer 3: Core engine -->
+  <div class="layer">
+    <div class="layer-title"><span class="dot core"></span> 3. Core Engine — <code>kage/core.py</code></div>
+    <div class="row">
+      <div class="card"><h3>Thread-safe lock</h3><p>concurrent-pipeline writes serialised at emit</p></div>
+      <div class="card"><h3>Context propagation</h3><p>pipeline_name, platform, env, custom_fields merged into every event</p></div>
+      <div class="card"><h3>active_runs tracking</h3><p>job_id ↔ task_id ↔ dataset_event linkage</p></div>
+      <div class="card"><h3>Pydantic schemas</h3><p><code>JobRunEvent</code> · <code>TaskRunEvent</code> · <code>DatasetEvent</code></p></div>
+    </div>
+    <div style="margin-top:12px;" class="pill-row">
+      <span class="pill">event_type = job_run</span>
+      <span class="pill">event_type = task_run</span>
+      <span class="pill">event_type = dataset_event</span>
+      <span class="pill">kage_signature = KAGE-PROPRIETARY-2026-v1.1</span>
+    </div>
+  </div>
+
+  <div class="arrow">▼</div>
+
+  <!-- Layer 4: Transports -->
+  <div class="layer">
+    <div class="layer-title"><span class="dot io"></span> 4. Transports — <code>kage/transports.py</code></div>
+    <div class="row">
+      <div class="card">
+        <h3>MultiTransport</h3>
+        <p>fan-out, fire-and-forget — one bad sink never breaks the pipeline</p>
+      </div>
+      <div class="card">
+        <h3>FileTransport</h3>
+        <p>atomic JSONL writes · <code>dbutils.fs</code> on Databricks · <code>os.makedirs</code> locally · 128 MB rotate</p>
+      </div>
+      <div class="card">
+        <h3>StdoutTransport</h3>
+        <p>structured JSON to stdout — for tests &amp; CI</p>
+      </div>
+      <div class="card">
+        <h3>Emergency fallback</h3>
+        <p>print event + error if a transport throws — events are never silently dropped</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow">▼</div>
+
+  <!-- Layer 5: Storage -->
+  <div class="layer">
+    <div class="layer-title"><span class="dot store"></span> 5. Storage — Partitioned JSONL (Lakehouse-Ready)</div>
+    <div class="card" style="font-family:'SF Mono',Menlo,Consolas,monospace; white-space:pre; overflow-x:auto; background:#0b0f15;">
+{base_path}/
+└── {platform}/                          # pyspark, databricks, dbt, airflow, …
+    ├── event_type=job_run/
+    │   └── dt=2026-05-26/part-*.jsonl
+    ├── event_type=task_run/
+    │   └── dt=2026-05-26/part-*.jsonl
+    └── event_type=dataset_event/
+        └── dt=2026-05-26/part-*.jsonl
+    </div>
+    <div class="medallion">
+      <div class="layer-tag landing">landing</div>
+      <div class="layer-tag bronze">bronze</div>
+      <div class="layer-tag silver">silver</div>
+      <div class="layer-tag gold">gold</div>
+    </div>
+    <p style="color:var(--muted); margin: 10px 0 0; font-size:12.5px;">
+      Every <code>dataset_event</code> carries <code>layer</code> + <code>upstream_datasets</code> for lineage across the medallion.
+    </p>
+  </div>
+
+  <div class="arrow">▼</div>
+
+  <!-- Layer 6: Analytics -->
+  <div class="layer">
+    <div class="layer-title"><span class="dot anal"></span> 6. Analytics — <code>kage/utils/databricks_analytics.py</code></div>
+    <div class="row">
+      <div class="card"><h3>Pipeline SLA</h3><p>success rate, p90 duration, total volume</p></div>
+      <div class="card"><h3>Medallion Health</h3><p>landing→gold survival %</p></div>
+      <div class="card"><h3>Failure Root Cause</h3><p>error aggregation across job / task / dataset</p></div>
+      <div class="card"><h3>Cost Attribution</h3><p>compute cost by pipeline × layer</p></div>
+      <div class="card"><h3>Bottleneck Detection</h3><p>NTILE perf quartiles</p></div>
+      <div class="card"><h3>Data Lineage Graph</h3><p>upstream_datasets exploded → dependency graph</p></div>
+      <div class="card"><h3>Pipeline Ontology</h3><p>entities + relationships for Unity Catalog</p></div>
+      <div class="card"><h3>Schema Drift Alerts</h3><p>multi-version detection across N days</p></div>
+      <div class="card"><h3>AI Resolution Suggestions</h3><p>opt-in via <code>ai_query()</code> + serving endpoint</p></div>
+    </div>
+  </div>
+
+</div>
+
+<h2>Event Flow — One Decorator, Many Hops</h2>
+<div class="grid-2">
+  <div class="layer">
+    <div class="layer-title">Trace of <code>@kage_dlt_table</code> firing</div>
+    <ol style="margin:6px 0 0 18px; padding:0; color:var(--text); line-height:1.7;">
+      <li>DLT runtime invokes the wrapped function.</li>
+      <li>KAGE wrapper runs the user body and captures return value.</li>
+      <li>Exception path → emit <code>dataset_event</code> with <code>status=FAILED</code>, <code>error_type</code>, <code>stack_trace</code>; re-raise.</li>
+      <li>Success path → infer <code>record_count</code> (skipped by default for DLT; explicit via <code>record_count_fn</code>).</li>
+      <li><code>KageLogger._safe_emit</code> merges context + custom_fields under the lock.</li>
+      <li><code>MultiTransport</code> writes JSONL to <code>event_type=dataset_event/dt=…/part-*.jsonl</code>.</li>
+      <li>DLT registers the returned DataFrame as a managed table.</li>
+      <li>Analytics queries read the partitioned JSONL directly (no ingest step).</li>
+    </ol>
+  </div>
+  <div class="layer">
+    <div class="layer-title">Streaming-safe by design</div>
+    <p style="color:var(--muted); margin:0;">
+      <code>_infer_record_count</code> checks <code>isStreaming</code> first and short-circuits to <code>0</code> — so the wrapper never calls <code>.count()</code> on a streaming DataFrame (which would block forever).
+    </p>
+  </div>
+</div>
+
+<h2>Component → File Map</h2>
+<table>
+  <thead><tr><th>Component</th><th>Source</th><th>Tests</th></tr></thead>
+  <tbody>
+    <tr><td>Imperative API + KageLogger</td><td><code>kage/core.py</code></td><td><code>tests/test_core.py</code></td></tr>
+    <tr><td>Declarative <code>@</code> decorators</td><td><code>kage/decorators.py</code></td><td><code>tests/test_decorators.py</code></td></tr>
+    <tr><td>Spark Declarative Pipelines (DLT)</td><td><code>kage/integrations/spark_declarative.py</code></td><td><code>tests/test_spark_declarative.py</code></td></tr>
+    <tr><td>Schemas</td><td><code>kage/schemas.py</code></td><td>—</td></tr>
+    <tr><td>Transports</td><td><code>kage/transports.py</code></td><td>covered by core tests</td></tr>
+    <tr><td>Databricks adapter / context</td><td><code>kage/adapters/databricks.py</code></td><td>—</td></tr>
+    <tr><td>Analytics queries</td><td><code>kage/utils/databricks_analytics.py</code></td><td>Databricks-runtime only</td></tr>
+  </tbody>
+</table>
+
+<p style="color:var(--muted); margin-top:32px; font-size:12px;">
+  Generated for KAGE-PROPRIETARY-2026-v1.1. Open this file in any browser — no internet, no build step.
+</p>
+
+</body>
+</html>
