@@ -59,6 +59,14 @@ LAYER_FILLS = {
 
 # --------------------------------------------------------------------- parser
 
+def _is_table_separator(line: str) -> bool:
+    s = line.strip()
+    if not (s.startswith("|") and s.endswith("|")):
+        return False
+    cells = [c.strip() for c in s.strip("|").split("|")]
+    return all(re.fullmatch(r":?-{3,}:?", c) for c in cells)
+
+
 def parse_slide(path: Path) -> dict:
     text = path.read_text()
     lines = text.splitlines()
@@ -69,6 +77,7 @@ def parse_slide(path: Path) -> dict:
     code_blocks: list[str] = []
     quote = ""
     layout = "default"
+    table_rows: list[list[str]] = []
 
     i = 0
     in_code = False
@@ -96,6 +105,16 @@ def parse_slide(path: Path) -> dict:
             i += 1
             continue
 
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            if _is_table_separator(line):
+                i += 1
+                continue
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            table_rows.append(cells)
+            i += 1
+            continue
+
         if line.startswith("# ") and not title:
             title = line[2:].strip()
         elif line.startswith("## ") and not subtitle:
@@ -113,6 +132,7 @@ def parse_slide(path: Path) -> dict:
         "code": code_blocks[0] if code_blocks else None,
         "quote": quote,
         "layout": layout,
+        "table": table_rows,
     }
 
 
@@ -262,13 +282,106 @@ def _down_arrow(slide, left, top, length=Inches(0.28)):
     tail.set("h", "med")
 
 
-def build_architecture_slide(prs, slide_data, notes, idx):
+def _style_table_cell(cell, text, *, bold=False, size=10, color=TEXT,
+                      fill=None, align=PP_ALIGN.LEFT):
+    cell.text = ""
+    if fill is not None:
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = fill
+    tf = cell.text_frame
+    tf.margin_left = Inches(0.08)
+    tf.margin_right = Inches(0.08)
+    tf.margin_top = Inches(0.04)
+    tf.margin_bottom = Inches(0.04)
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.alignment = align
+    run = p.add_run()
+    run.text = text
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.color.rgb = color
+    run.font.name = "Calibri"
+
+
+def build_comparison_slide(prs, slide_data, notes, idx, total):
+    """Render a markdown table as a native, fully-editable PowerPoint table."""
+    blank = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank)
+    set_slide_bg(slide, BG)
+    add_accent_stripe(slide)
+    add_page_number(slide, idx, total)
+
+    add_textbox(slide, Inches(0.5), Inches(0.35), Inches(12.5), Inches(0.7),
+                slide_data["title"], size=28, bold=True, color=TEXT)
+    if slide_data["subtitle"]:
+        add_textbox(slide, Inches(0.5), Inches(1.05), Inches(12.5), Inches(0.5),
+                    slide_data["subtitle"], size=16, color=ACCENT)
+
+    rows = slide_data["table"]
+    if not rows:
+        add_notes(slide, notes)
+        return
+
+    n_cols = max(len(r) for r in rows)
+    # normalise row widths
+    for r in rows:
+        while len(r) < n_cols:
+            r.append("")
+
+    n_rows = len(rows)
+    table_left = Inches(0.5)
+    table_top = Inches(1.65)
+    table_w = Inches(12.33)
+    # quote takes a strip at the bottom if present
+    bottom_reserved = Inches(0.6) if slide_data["quote"] else Inches(0.25)
+    table_h = Inches(7.5) - table_top - bottom_reserved
+
+    shape = slide.shapes.add_table(n_rows, n_cols, table_left, table_top,
+                                   table_w, table_h)
+    table = shape.table
+    shape.name = "kage_databricks_comparison"
+
+    # Column widths — first column narrower (it's the label column)
+    if n_cols == 3:
+        table.columns[0].width = Inches(3.0)
+        table.columns[1].width = Inches(4.6)
+        table.columns[2].width = Inches(4.73)
+    else:
+        even = int(table_w / n_cols)
+        for c in table.columns:
+            c.width = Emu(even)
+
+    for ri, row in enumerate(rows):
+        for ci, text in enumerate(row):
+            cell = table.cell(ri, ci)
+            if ri == 0:
+                _style_table_cell(cell, text, bold=True, size=12,
+                                  color=RGBColor(0xFF, 0xFF, 0xFF),
+                                  fill=ACCENT)
+            else:
+                fill = PANEL if ri % 2 == 0 else RGBColor(0xFF, 0xFF, 0xFF)
+                # accent the "What KAGE adds" column subtly
+                color = TEXT
+                if ci == n_cols - 1:
+                    color = TEXT
+                _style_table_cell(cell, text, size=10, color=color, fill=fill)
+
+    if slide_data["quote"]:
+        add_textbox(slide, Inches(0.5), Inches(6.85), Inches(12.5), Inches(0.45),
+                    f"“{slide_data['quote']}”",
+                    size=13, color=MUTED, align=PP_ALIGN.CENTER)
+
+    add_notes(slide, notes)
+
+
+def build_architecture_slide(prs, slide_data, notes, idx, total):
     blank = prs.slide_layouts[6]
     slide = prs.slides.add_slide(blank)
     set_slide_bg(slide, BG)
 
     add_accent_stripe(slide)
-    add_page_number(slide, idx)
+    add_page_number(slide, idx, total)
 
     # Title + subtitle
     add_textbox(slide, Inches(0.5), Inches(0.35), Inches(12.5), Inches(0.7),
@@ -326,17 +439,18 @@ def add_accent_stripe(slide):
     stripe.shadow.inherit = False
 
 
-def add_page_number(slide, idx):
-    add_textbox(slide, Inches(12.4), Inches(7.1), Inches(0.8), Inches(0.3),
-                f"{idx} / 6", size=11, color=MUTED, align=PP_ALIGN.RIGHT)
+def add_page_number(slide, idx, total):
+    label = f"{idx} / {total}"
+    add_textbox(slide, Inches(12.2), Inches(7.1), Inches(1.0), Inches(0.3),
+                label, size=11, color=MUTED, align=PP_ALIGN.RIGHT)
 
 
-def build_default_slide(prs, slide_data, notes, idx):
+def build_default_slide(prs, slide_data, notes, idx, total):
     blank = prs.slide_layouts[6]
     slide = prs.slides.add_slide(blank)
     set_slide_bg(slide, BG)
     add_accent_stripe(slide)
-    add_page_number(slide, idx)
+    add_page_number(slide, idx, total)
 
     add_textbox(slide, Inches(0.5), Inches(0.4), Inches(12.5), Inches(0.9),
                 slide_data["title"], size=36, bold=True, color=TEXT)
@@ -377,24 +491,27 @@ def main() -> None:
     prs.slide_height = Inches(7.5)
 
     folders = sorted(p for p in SLIDES_DIR.iterdir() if p.is_dir())
+    folders = [f for f in folders if (f / "slide.md").exists()]
     if not folders:
         raise SystemExit(f"No slide folders under {SLIDES_DIR}")
+
+    total = len(folders)
 
     for idx, folder in enumerate(folders, start=1):
         slide_md = folder / "slide.md"
         pointers_md = folder / "pointers.md"
-        if not slide_md.exists():
-            print(f"  skipping {folder.name} (no slide.md)")
-            continue
         data = parse_slide(slide_md)
         notes = pointers_md.read_text() if pointers_md.exists() else ""
 
         if data["layout"] == "architecture":
-            build_architecture_slide(prs, data, notes, idx)
+            build_architecture_slide(prs, data, notes, idx, total)
+            marker = "[arch]"
+        elif data["layout"] == "comparison":
+            build_comparison_slide(prs, data, notes, idx, total)
+            marker = "[cmp] "
         else:
-            build_default_slide(prs, data, notes, idx)
-
-        marker = "[arch]" if data["layout"] == "architecture" else "     "
+            build_default_slide(prs, data, notes, idx, total)
+            marker = "      "
         print(f"  + slide {idx} {marker} {data['title']}")
 
     prs.save(OUT_PPTX)
