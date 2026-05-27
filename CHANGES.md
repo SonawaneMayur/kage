@@ -5,6 +5,34 @@ Newest entries on top. Each prompt = one section.
 
 ---
 
+## Prompt 8 — Refresh architecture diagrams (HTML + PPT)
+**Date:** 2026-05-27
+**Request:** Update the architecture diagram to reflect agentic + dbt + Airflow + LangChain additions.
+
+### Modified files
+- `docs/architecture.html`:
+  - **Subtitle reframed** — "Universal observability for pipelines *and* agents. Two paradigms (medallion-aware ETL + span-based agentic) feed one event stream."
+  - **Layer 1 (User Code)** — added `Agentic frameworks` (LangChain / LangGraph / custom), broke `Airflow / dbt` into separate cards, kept Spark / DLT / Python.
+  - **Layer 2 (KAGE API Surface)** — split into 7 cards: imperative, declarative ETL, **agentic decorators** (`@agent` / `@step` / `@tool` / `@llm_call`), DLT, dbt, Airflow, LangChain.
+  - **Layer 3 (Core Engine)** — added `contextvars span stack` (parallel/async/nested parent linkage) and `Auto error capture`. Updated schema card to note `layer` is now optional + `kind` and `parent_span_id` are first-class.
+  - **Event-type pills** — added `kind = etl | agent | step | tool | llm_call | chain | retrieval`.
+  - **Analytics layer** — added `Agentic trace queries` card (call-tree rebuild via `parent_span_id`, token/cost sums per agent).
+  - **Trace section reorganised into two paradigms side-by-side** — ETL trace (`@kage_dlt_table`) and Agentic trace (`@agent + @step + @tool`). Each gets a sibling "safety note" panel: streaming-safe for ETL, concurrency-safe for agentic.
+  - **Component → File Map** — added rows for `kage/agentic.py`, `kage/integrations/dbt.py`, `kage/integrations/airflow.py`, `kage/integrations/langchain.py` with their test files.
+  - **Legend** — adds an "11+ entry points · one event stream" callout.
+- `presentation/generate_pptx.py`:
+  - Architecture slide layer cards updated. New 6-layer stack: User Code → KAGE API → **Adapters** (renamed from Transports) → Core Engine → Storage → Analytics.
+  - Layer body text reflects agentic + LangChain + dbt + Airflow: `@kage_dlt_table · emit_dbt_run_results · kage_task_callbacks · KageLangChainCallback`.
+  - Core Engine card now mentions `contextvars span stack` alongside the thread-safe lock.
+- `presentation/slides/03_solution/slide.md` — subtitle updated to "3 event types · ETL + Agentic APIs · 4 adapters · 1 JSONL stream".
+- `presentation/slides/03_solution/pointers.md` — talking points rewritten to cover both paradigms and four adapters.
+- `presentation/kage_5min.pptx` — regenerated.
+
+### Test status
+**70 / 70 passing** (no production code touched — diagram + slide updates only).
+
+---
+
 ## Prompt 7 — Agentic observability (any sequential / parallel flow)
 **Date:** 2026-05-27
 **Request:** Make KAGE work for agentic frameworks too — capture business + system logs at any scale across sequential or parallel "layers" that don't fit the medallion model.

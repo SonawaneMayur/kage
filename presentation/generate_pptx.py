@@ -50,8 +50,8 @@ GOLD     = RGBColor(0xB4, 0x53, 0x09)   # for inline code text
 LAYER_FILLS = {
     "User Code":   RGBColor(0xE0, 0xF2, 0xFE),  # sky-100
     "KAGE API":    RGBColor(0xDB, 0xEA, 0xFE),  # blue-100
+    "Adapters":    RGBColor(0xDC, 0xFC, 0xE7),  # green-100
     "Core Engine": RGBColor(0xEE, 0xE9, 0xFE),  # violet-100
-    "Transports":  RGBColor(0xDC, 0xFC, 0xE7),  # green-100
     "Storage":     RGBColor(0xFE, 0xF3, 0xC7),  # amber-100
     "Analytics":   RGBColor(0xFE, 0xE2, 0xE2),  # red-100
 }
@@ -393,17 +393,17 @@ def build_architecture_slide(prs, slide_data, notes, idx, total):
     # Architecture stack: 6 layers, centered. Each layer + arrow editable.
     layers = [
         ("User Code",
-         "PySpark · DLT / Lakeflow · dbt · Airflow · Python"),
+         "PySpark · DLT · dbt · Airflow · LangChain / LangGraph · async agents"),
         ("KAGE API",
-         "@pipeline · @task · @dataset · @kage_dlt_table · KageLogger"),
+         "ETL: @pipeline / @task / @dataset    Agentic: @agent / @step / @tool / @llm_call"),
+        ("Adapters",
+         "@kage_dlt_table · emit_dbt_run_results · kage_task_callbacks · KageLangChainCallback"),
         ("Core Engine",
-         "thread-safe · context · schemas (job_run · task_run · dataset_event)"),
-        ("Transports",
-         "MultiTransport → FileTransport (JSONL) · StdoutTransport"),
+         "thread-safe lock · contextvars span stack · auto error capture · schemas"),
         ("Storage",
          "partitioned JSONL: base/{platform}/event_type=X/dt=Y/part-*.jsonl"),
         ("Analytics",
-         "SLA · Medallion Health · Lineage · Cost · AI suggestions (ai_query)"),
+         "SLA · Medallion Health · Lineage · Cost · Agentic call tree · AI suggestions"),
     ]
 
     card_w = Inches(9.0)

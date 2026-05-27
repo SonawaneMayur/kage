@@ -113,14 +113,15 @@
 <body>
 
 <h1>KAGE — System Architecture</h1>
-<p class="sub">Universal pipeline observability. Two entry styles (imperative + declarative <code>@</code>), one event stream, lakehouse-ready partitioned JSONL.</p>
+<p class="sub">Universal observability for pipelines <em>and</em> agents. Two paradigms (medallion-aware ETL + span-based agentic) feed one event stream and one lakehouse-ready JSONL store.</p>
 
 <div class="legend">
-  <span><span class="dot api"></span>API Surface</span>
+  <span><span class="dot api"></span>User Code + API Surface</span>
   <span><span class="dot core"></span>Core Engine</span>
   <span><span class="dot io"></span>Transports</span>
   <span><span class="dot store"></span>Storage</span>
   <span><span class="dot anal"></span>Analytics</span>
+  <span style="margin-left:auto; color:var(--text);"><strong>11+ entry points</strong> · one event stream</span>
 </div>
 
 <h2>End-to-End Stack</h2>
@@ -132,9 +133,11 @@
     <div class="layer-title"><span class="dot api"></span> 1. User Code</div>
     <div class="row">
       <div class="card"><h3>PySpark / Spark SQL</h3><p>batch + streaming ETL jobs</p></div>
-      <div class="card"><h3>Spark Declarative Pipelines</h3><p>DLT / Lakeflow <code>@dlt.table</code></p></div>
-      <div class="card"><h3>Airflow / dbt</h3><p>orchestration tasks</p></div>
-      <div class="card"><h3>Pure Python / Scala</h3><p>arbitrary pipelines</p></div>
+      <div class="card"><h3>DLT / Lakeflow</h3><p>Spark Declarative Pipelines — <code>@dlt.table</code></p></div>
+      <div class="card"><h3>dbt</h3><p>SQL / Python models; ingested from <code>target/</code></p></div>
+      <div class="card"><h3>Airflow</h3><p>callbacks per <code>TaskInstance</code> + DAG run</p></div>
+      <div class="card"><h3>Agentic frameworks</h3><p>LangChain / LangGraph / custom — sequential, async, parallel</p></div>
+      <div class="card"><h3>Pure Python / Scala</h3><p>any sequential or parallel flow</p></div>
     </div>
   </div>
 
@@ -149,12 +152,28 @@
         <p><code>job_start</code> · <code>task_start</code> · <code>dataset_read</code> · <code>dataset_write</code> · <code>job_end</code></p>
       </div>
       <div class="card">
-        <h3>Declarative <code>@</code> decorators</h3>
+        <h3>Declarative <code>@</code> — ETL</h3>
         <p><code>@pipeline</code> · <code>@task(layer=…)</code> · <code>@dataset(layer=…)</code> — auto error capture, auto record_count</p>
       </div>
       <div class="card">
-        <h3>DLT / Lakeflow integration</h3>
+        <h3>Agentic <code>@</code> — Spans</h3>
+        <p><code>@agent</code> · <code>@step</code> · <code>@tool</code> · <code>@llm_call</code> · <code>kage_span</code> · <code>log_llm_usage</code></p>
+      </div>
+      <div class="card">
+        <h3>DLT integration</h3>
         <p><code>@kage_dlt_table</code> · <code>@kage_dlt_view</code> · <code>@kage_dlt_expectations</code></p>
+      </div>
+      <div class="card">
+        <h3>dbt artifact ingest</h3>
+        <p><code>emit_dbt_run_results(target/)</code> + CLI</p>
+      </div>
+      <div class="card">
+        <h3>Airflow callbacks</h3>
+        <p><code>kage_task_callbacks</code> · <code>kage_dag_callbacks</code> · <code>log_dataset_from_context</code></p>
+      </div>
+      <div class="card">
+        <h3>LangChain / LangGraph</h3>
+        <p><code>KageLangChainCallback</code> — chain · llm_call · tool · retriever</p>
       </div>
     </div>
   </div>
@@ -163,17 +182,20 @@
 
   <!-- Layer 3: Core engine -->
   <div class="layer">
-    <div class="layer-title"><span class="dot core"></span> 3. Core Engine — <code>kage/core.py</code></div>
+    <div class="layer-title"><span class="dot core"></span> 3. Core Engine — <code>kage/core.py</code> + <code>kage/agentic.py</code></div>
     <div class="row">
-      <div class="card"><h3>Thread-safe lock</h3><p>concurrent-pipeline writes serialised at emit</p></div>
+      <div class="card"><h3>Thread-safe lock</h3><p>concurrent writes serialised at emit</p></div>
       <div class="card"><h3>Context propagation</h3><p>pipeline_name, platform, env, custom_fields merged into every event</p></div>
-      <div class="card"><h3>active_runs tracking</h3><p>job_id ↔ task_id ↔ dataset_event linkage</p></div>
-      <div class="card"><h3>Pydantic schemas</h3><p><code>JobRunEvent</code> · <code>TaskRunEvent</code> · <code>DatasetEvent</code></p></div>
+      <div class="card"><h3>active_runs tracking</h3><p>job_id ↔ task_id ↔ dataset_event linkage (ETL)</p></div>
+      <div class="card"><h3><code>contextvars</code> span stack</h3><p>parent_span_id for nested + async + parallel children (agentic)</p></div>
+      <div class="card"><h3>Pydantic schemas</h3><p><code>JobRunEvent</code> · <code>TaskRunEvent</code> · <code>DatasetEvent</code> — <code>layer</code> optional, <code>kind</code> + <code>parent_span_id</code> added</p></div>
+      <div class="card"><h3>Auto error capture</h3><p><code>error_type</code> · <code>error_message</code> · <code>stack_trace</code> on every raise</p></div>
     </div>
     <div style="margin-top:12px;" class="pill-row">
       <span class="pill">event_type = job_run</span>
       <span class="pill">event_type = task_run</span>
       <span class="pill">event_type = dataset_event</span>
+      <span class="pill">kind = etl | agent | step | tool | llm_call | chain | retrieval</span>
       <span class="pill">kage_signature = KAGE-PROPRIETARY-2026-v1.1</span>
     </div>
   </div>
@@ -244,30 +266,50 @@
       <div class="card"><h3>Pipeline Ontology</h3><p>entities + relationships for Unity Catalog</p></div>
       <div class="card"><h3>Schema Drift Alerts</h3><p>multi-version detection across N days</p></div>
       <div class="card"><h3>AI Resolution Suggestions</h3><p>opt-in via <code>ai_query()</code> + serving endpoint</p></div>
+      <div class="card"><h3>Agentic trace queries</h3><p>group by <code>job_run_id</code> + <code>parent_span_id</code> to rebuild the call tree; sum <code>total_tokens</code> · <code>cost_usd</code> per agent</p></div>
     </div>
   </div>
 
 </div>
 
-<h2>Event Flow — One Decorator, Many Hops</h2>
+<h2>Two Paradigms, One Stream</h2>
 <div class="grid-2">
   <div class="layer">
-    <div class="layer-title">Trace of <code>@kage_dlt_table</code> firing</div>
+    <div class="layer-title">ETL trace — <code>@kage_dlt_table</code></div>
     <ol style="margin:6px 0 0 18px; padding:0; color:var(--text); line-height:1.7;">
       <li>DLT runtime invokes the wrapped function.</li>
-      <li>KAGE wrapper runs the user body and captures return value.</li>
-      <li>Exception path → emit <code>dataset_event</code> with <code>status=FAILED</code>, <code>error_type</code>, <code>stack_trace</code>; re-raise.</li>
-      <li>Success path → infer <code>record_count</code> (skipped by default for DLT; explicit via <code>record_count_fn</code>).</li>
-      <li><code>KageLogger._safe_emit</code> merges context + custom_fields under the lock.</li>
-      <li><code>MultiTransport</code> writes JSONL to <code>event_type=dataset_event/dt=…/part-*.jsonl</code>.</li>
-      <li>DLT registers the returned DataFrame as a managed table.</li>
-      <li>Analytics queries read the partitioned JSONL directly (no ingest step).</li>
+      <li>KAGE wrapper runs the body, captures return value.</li>
+      <li>On raise → <code>dataset_event</code> with <code>status=FAILED</code> + <code>stack_trace</code>; re-raise.</li>
+      <li>Success → infer <code>record_count</code> (skipped by default; opt-in via <code>record_count_fn</code>).</li>
+      <li><code>_safe_emit</code> writes JSONL to <code>event_type=dataset_event/dt=…/part-*.jsonl</code>.</li>
+      <li>Analytics SQL reads the partitions directly — no ingest.</li>
     </ol>
   </div>
   <div class="layer">
-    <div class="layer-title">Streaming-safe by design</div>
+    <div class="layer-title">Agentic trace — <code>@agent</code> + <code>@step</code> + <code>@tool</code></div>
+    <ol style="margin:6px 0 0 18px; padding:0; color:var(--text); line-height:1.7;">
+      <li><code>@agent</code> sets <code>_active_job_id</code> contextvar; emits <code>job_run RUNNING</code>.</li>
+      <li>Root span pushed onto <code>_active_span_stack</code> (contextvar).</li>
+      <li>Nested <code>@step</code> / <code>@tool</code> / <code>@llm_call</code> read parent from the stack → emit with <code>parent_span_id</code>.</li>
+      <li>Parallel children (<code>asyncio.gather</code> / ThreadPool with <code>copy_context</code>) inherit the same parent.</li>
+      <li><code>log_llm_usage(...)</code> attaches <code>prompt_tokens</code> · <code>completion_tokens</code> · <code>cost_usd</code> · <code>model</code> to the active span.</li>
+      <li>Span end → <code>task_run</code> with <code>latency_ms</code>, status SUCCESS / FAILED.</li>
+      <li>Same JSONL store as ETL — analytics queries rebuild the call tree via <code>parent_span_id</code>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+  <div class="layer">
+    <div class="layer-title">Streaming-safe (ETL)</div>
     <p style="color:var(--muted); margin:0;">
-      <code>_infer_record_count</code> checks <code>isStreaming</code> first and short-circuits to <code>0</code> — so the wrapper never calls <code>.count()</code> on a streaming DataFrame (which would block forever).
+      <code>_infer_record_count</code> checks <code>isStreaming</code> first and short-circuits to <code>0</code> — never calls <code>.count()</code> on a streaming DataFrame.
+    </p>
+  </div>
+  <div class="layer">
+    <div class="layer-title">Concurrency-safe (Agentic)</div>
+    <p style="color:var(--muted); margin:0;">
+      <code>contextvars</code> propagate across <code>await</code> boundaries automatically. ThreadPool needs <code>contextvars.copy_context().run(fn)</code> per submission — one fresh copy per worker because a <code>Context</code> can only be entered once at a time.
     </p>
   </div>
 </div>
@@ -277,8 +319,12 @@
   <thead><tr><th>Component</th><th>Source</th><th>Tests</th></tr></thead>
   <tbody>
     <tr><td>Imperative API + KageLogger</td><td><code>kage/core.py</code></td><td><code>tests/test_core.py</code></td></tr>
-    <tr><td>Declarative <code>@</code> decorators</td><td><code>kage/decorators.py</code></td><td><code>tests/test_decorators.py</code></td></tr>
+    <tr><td>Declarative <code>@</code> (ETL)</td><td><code>kage/decorators.py</code></td><td><code>tests/test_decorators.py</code></td></tr>
+    <tr><td>Agentic <code>@</code> (spans)</td><td><code>kage/agentic.py</code></td><td><code>tests/test_agentic.py</code></td></tr>
     <tr><td>Spark Declarative Pipelines (DLT)</td><td><code>kage/integrations/spark_declarative.py</code></td><td><code>tests/test_spark_declarative.py</code></td></tr>
+    <tr><td>dbt artifact ingest</td><td><code>kage/integrations/dbt.py</code></td><td><code>tests/test_dbt_integration.py</code></td></tr>
+    <tr><td>Airflow callbacks</td><td><code>kage/integrations/airflow.py</code></td><td><code>tests/test_airflow_integration.py</code></td></tr>
+    <tr><td>LangChain / LangGraph</td><td><code>kage/integrations/langchain.py</code></td><td><code>tests/test_langchain_integration.py</code></td></tr>
     <tr><td>Schemas</td><td><code>kage/schemas.py</code></td><td>—</td></tr>
     <tr><td>Transports</td><td><code>kage/transports.py</code></td><td>covered by core tests</td></tr>
     <tr><td>Databricks adapter / context</td><td><code>kage/adapters/databricks.py</code></td><td>—</td></tr>
