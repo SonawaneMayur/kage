@@ -2,8 +2,9 @@
 
 **KAGE-PROPRIETARY-2026-v1.1** | `pip install kage`
 
-Medallion-aware logging for PySpark, Spark SQL, Pure Python, Scala, dbt, Airflow  
-Zero-disruption integration | Auto-captures ALL table operations & errors
+Medallion-aware logging for PySpark, Spark SQL, DLT/Lakeflow, dbt, Airflow, pure Python  
+**Span-based agentic observability** for LangChain / LangGraph / async tool fan-out  
+Zero-disruption integration · imperative + declarative `@` API · ready-made adapters for dbt, Airflow, and LangChain
 
 ## Why KAGE: Business Logs vs. System Logs
 
@@ -111,6 +112,166 @@ def silver_orders():
 Full positive/negative/extreme example notebook:
 [`examples/spark_declarative_cases.py`](examples/spark_declarative_cases.py).
 Minimal quickstart: [`examples/spark_declarative_quickstart.py`](examples/spark_declarative_quickstart.py).
+
+### Agentic Observability (Spans for Agents, Tools, LLMs)
+For agentic flows that don't fit the medallion model — multi-step reasoning,
+parallel tool calls, RAG pipelines — KAGE provides span-based decorators
+with parent/child linkage, sync + async support, and token tracking.
+
+```python
+from kage import (
+    configure, agent, step, tool, llm_call,
+    log_llm_usage, log_metric, kage_span,
+)
+
+configure(base_path="./kage-logs", pipeline_name="research_agent",
+          platform="agent")
+
+@tool("web_search")
+def web_search(q): return ["doc1", "doc2"]
+
+@llm_call(model="claude-opus-4-7")
+def call_llm(prompt):
+    log_llm_usage(prompt_tokens=120, completion_tokens=240, cost_usd=0.0084)
+    return "..."
+
+@step("plan")
+def plan(q): return call_llm(f"plan for {q}")
+
+@agent("research_agent", agent_version="1.0")
+def research(query):
+    subqueries = plan(query)
+    docs = web_search(subqueries)
+    return call_llm(f"synthesize: {docs}")
+```
+
+What you get for free:
+- `event_type=job_run` with `kind=agent` for the agent run
+- `event_type=task_run` with `kind=agent|step|tool|llm_call` for every span
+- `parent_span_id` linkage to rebuild the full call tree
+- `latency_ms` on every end event
+- `prompt_tokens`, `completion_tokens`, `total_tokens`, `cost_usd`, `model` on LLM calls (via `log_llm_usage`)
+- Auto FAILED status with `error_type` + `error_message` + `stack_trace` on raise
+
+#### Sequential, parallel, async — all work the same way
+Parent linkage uses `contextvars`, so:
+
+```python
+# asyncio.gather - children share the parent automatically
+@step("hybrid_retrieve")
+async def hybrid_retrieve(q):
+    return await asyncio.gather(vector_search(q), keyword_search(q))
+
+# ThreadPoolExecutor - copy context per submission
+@step("fan_out")
+def fan_out(urls):
+    with ThreadPoolExecutor() as ex:
+        return [f.result() for f in (
+            ex.submit(contextvars.copy_context().run, fetch, u) for u in urls
+        )]
+```
+
+#### LangChain / LangGraph adapter
+Drop `KageLangChainCallback` into any runnable's `callbacks` config — KAGE
+captures every chain / LLM / tool / retriever run as a span, with token
+usage extracted from `llm_output` or `usage_metadata`.
+
+```python
+from kage.integrations.langchain import KageLangChainCallback
+
+handler = KageLangChainCallback(agent_name="qa_agent")
+chain.invoke(input, config={"callbacks": [handler]})
+```
+
+Quickstart + parallel + LangChain examples:
+[`examples/agentic_quickstart.py`](examples/agentic_quickstart.py),
+[`examples/agentic_async_parallel.py`](examples/agentic_async_parallel.py),
+[`examples/agentic_langchain.py`](examples/agentic_langchain.py).
+
+### dbt - Ingest `target/` artifacts after `dbt run`
+KAGE parses dbt's `run_results.json` + `manifest.json` and emits one event per
+model. Layer is inferred from model tags (`bronze`/`silver`/`gold`) or schema
+name, with a `default_layer` fallback. Lineage comes from `depends_on.nodes`.
+
+```bash
+# 1. Tag your models with the medallion layer
+#    {{ config(materialized='table', tags=['bronze']) }}
+
+# 2. Run dbt normally
+dbt run --target prod
+
+# 3. Ingest the artifacts
+python -m kage.integrations.dbt target/ \
+    --pipeline-name orders_dbt --base-path ./kage-logs
+```
+
+Or programmatically:
+```python
+from kage.integrations.dbt import emit_dbt_run_results
+
+emit_dbt_run_results(
+    target_dir="target/",
+    pipeline_name="orders_dbt",
+    base_path="./kage-logs",
+    default_layer="silver",  # used when a model has no layer tag
+)
+```
+
+Quickstart + case-handling examples:
+[`examples/dbt_quickstart.py`](examples/dbt_quickstart.py),
+[`examples/dbt_cases.py`](examples/dbt_cases.py).
+
+### Airflow - Callback-based task observability
+Wire two factory functions into your DAG. Every `TaskInstance` becomes one KAGE
+`task_run`; the DAG run becomes one `job_run`. The KAGE `job_run_id` matches
+Airflow's `run_id` so all events for a DAG run share an id.
+
+```python
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from kage import configure
+from kage.integrations.airflow import (
+    kage_task_callbacks, kage_dag_callbacks, log_dataset_from_context,
+)
+
+configure(base_path="/opt/airflow/kage-logs",
+          pipeline_name="orders_etl", platform="airflow")
+
+with DAG(
+    dag_id="orders_etl",
+    schedule="@daily",
+    default_args={**kage_task_callbacks(layer="silver")},   # DAG-wide layer
+    **kage_dag_callbacks(),
+) as dag:
+
+    ingest = PythonOperator(
+        task_id="ingest", python_callable=ingest_fn,
+        **kage_task_callbacks(layer="bronze"),               # per-task override
+    )
+
+    def clean_fn(**ctx):
+        cleaned = do_work()
+        log_dataset_from_context(ctx, layer="bronze",
+                                 dataset_name="bronze_orders",
+                                 record_count=len(cleaned),
+                                 upstream_datasets=["raw_orders_api"])
+        return cleaned
+
+    clean = PythonOperator(task_id="clean", python_callable=clean_fn,
+                           **kage_task_callbacks(layer="bronze"))
+
+    ingest >> clean
+```
+
+What you get for free:
+- `on_execute_callback` -> KAGE `task_start`
+- `on_success_callback` -> KAGE `task_end(SUCCESS)`
+- `on_failure_callback` -> KAGE `task_end(FAILED)` with `error_type`, `error_message`, `stack_trace`
+- DAG-level `on_success_callback` / `on_failure_callback` -> KAGE `job_end`
+
+Quickstart + case-handling examples:
+[`examples/airflow_quickstart.py`](examples/airflow_quickstart.py),
+[`examples/airflow_cases.py`](examples/airflow_cases.py).
 
 ### PySpark - Spark Listener (preview)
 ```python
@@ -315,6 +476,45 @@ def my_dlt_table(): ...
 
 @kage_dlt_view(layer="gold", upstream_datasets=["..."])     # logs action=READ
 def my_dlt_view(): ...
+```
+
+### dbt
+```python
+from kage.integrations.dbt import emit_dbt_run_results
+
+emit_dbt_run_results(
+    target_dir="target/",                # dbt's compiled artifacts folder
+    pipeline_name="orders_dbt",
+    base_path="./kage-logs",
+    default_layer="silver",              # fallback when no tag / schema match
+    environment="prod",
+    job_name="orders_dbt_daily",
+)
+# CLI: python -m kage.integrations.dbt target/ --pipeline-name orders_dbt
+```
+
+### Airflow
+```python
+from kage.integrations.airflow import (
+    kage_task_callbacks,        # -> on_execute / on_success / on_failure for tasks
+    kage_dag_callbacks,         # -> on_success / on_failure for DAG runs
+    log_dataset_from_context,   # emit dataset_event from inside a task body
+)
+```
+
+### Agentic (Spans)
+```python
+from kage import (
+    agent,           # @agent("name") - job_run + root span (kind=agent)
+    step,            # @step("name")  - generic span (kind=step)
+    tool,            # @tool("name")  - tool invocation (kind=tool)
+    llm_call,        # @llm_call(model=...) - LLM call (kind=llm_call)
+    kage_span,       # with kage_span("name", kind=...): manual context manager
+    current_span,    # the active span object (or None)
+    log_llm_usage,   # attach prompt/completion/total tokens + cost + model
+    log_metric,      # attach arbitrary fields to the active span
+)
+from kage.integrations.langchain import KageLangChainCallback
 ```
 
 ## ✅ Features

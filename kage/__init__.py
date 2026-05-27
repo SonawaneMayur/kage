@@ -25,6 +25,23 @@ from .integrations.spark_declarative import (
     kage_dlt_expectations,
     is_dlt_available,
 )
+from .integrations.dbt import emit_dbt_run_results
+from .integrations.airflow import (
+    kage_task_callbacks,
+    kage_dag_callbacks,
+    log_dataset_from_context,
+)
+from .agentic import (
+    agent,
+    step,
+    tool,
+    llm_call,
+    kage_span,
+    current_span,
+    log_llm_usage,
+    log_metric,
+)
+from .integrations.langchain import KageLangChainCallback
 # Business Analytics (Databricks Native)
 from .utils.databricks_analytics import (
     # One-line Executive Dashboard
@@ -58,6 +75,15 @@ __all__ = [
     # Spark Declarative Pipelines (DLT / Lakeflow) integration
     "kage_dlt_table", "kage_dlt_view", "kage_dlt_expectations",
     "is_dlt_available",
+    # dbt integration
+    "emit_dbt_run_results",
+    # Airflow integration
+    "kage_task_callbacks", "kage_dag_callbacks", "log_dataset_from_context",
+    # Agentic / span-based observability
+    "agent", "step", "tool", "llm_call",
+    "kage_span", "current_span", "log_llm_usage", "log_metric",
+    # LangChain integration
+    "KageLangChainCallback",
     # Analytics
     "kage_dashboard",
     "pipeline_sla_dashboard",

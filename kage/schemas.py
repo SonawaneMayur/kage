@@ -35,7 +35,11 @@ class TaskRunEvent(BaseEvent):
     event_type: Literal["task_run"] = "task_run"
     job_run_id: str
     task_run_id: str
-    layer: Literal["landing", "bronze", "silver", "gold"]
+    # `layer` is optional. For medallion ETL set "landing"/"bronze"/"silver"/"gold".
+    # For agentic flows leave None and use `kind` (agent/step/tool/llm_call/...).
+    layer: Optional[str] = None
+    kind: Optional[str] = None
+    parent_span_id: Optional[str] = None
     task_name: str
     status: Literal["RUNNING", "SUCCESS", "FAILED"]
     input_record_count: Optional[int] = None
@@ -46,10 +50,11 @@ class DatasetEvent(BaseEvent):
     job_run_id: str
     task_run_id: Optional[str] = None
     dataset_event_id: str
-    layer: Literal["landing", "bronze", "silver", "gold"]
+    layer: Optional[str] = None
+    kind: Optional[str] = None
     event_action: Literal["READ", "WRITE", "DELETE", "MERGE"]
     dataset_name: str
-    dataset_type: Literal["table", "file", "stream"] = "table"
+    dataset_type: str = "table"
     record_count: Optional[int] = None
     catalog: Optional[str] = None
     schema_name: Optional[str] = None
