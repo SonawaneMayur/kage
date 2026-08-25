@@ -18,6 +18,10 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=7.0", "pytest-cov>=4.0"]
 dev = ["black", "isort", "mypy"]
+ui = ["streamlit>=1.30", "polars>=0.20", "plotly>=5.18"]
+
+[project.scripts]
+kage = "kage.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

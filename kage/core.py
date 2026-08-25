@@ -7,7 +7,12 @@ import threading
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from .transports import FileTransport, StdoutTransport, MultiTransport
+from .transports import (
+    BufferedFileTransport,
+    FileTransport,
+    MultiTransport,
+    StdoutTransport,
+)
 from .adapters.databricks import detect_databricks_context
 
 class KageLogger:
@@ -19,10 +24,21 @@ class KageLogger:
         pipeline_name: str = "unnamed_pipeline",
         language: str = "python",
         platform: str = None,
+        *,
+        buffered: bool = False,
+        batch_size: int = 500,
+        flush_interval_sec: float = 2.0,
+        max_file_size_mb: int = 128,
         **kwargs
     ):
         self.lock = threading.Lock()
-        self.transports = self._setup_transports(transport, base_path)
+        self.transports = self._setup_transports(
+            transport, base_path,
+            buffered=buffered,
+            batch_size=batch_size,
+            flush_interval_sec=flush_interval_sec,
+            max_file_size_mb=max_file_size_mb,
+        )
 
         self.context = {
             "platform": platform or detect_databricks_context().get("platform", "pyspark"),
@@ -35,13 +51,33 @@ class KageLogger:
 
         self.active_runs: Dict[str, str] = {}
 
-    def _setup_transports(self, transport: str, base_path: str):
+    def _setup_transports(self, transport, base_path, *,
+                          buffered=False, batch_size=500,
+                          flush_interval_sec=2.0, max_file_size_mb=128):
+        parts = [p.strip().lower() for p in transport.split(",")] if transport else []
         transports = []
-        if "file" in transport.lower():
-            transports.append(FileTransport(base_path))
-        if "stdout" in transport.lower():
+        if any(p in ("file", "buffered_file") for p in parts) or "file" in (transport or "").lower():
+            use_buffered = buffered or "buffered_file" in parts
+            if use_buffered:
+                transports.append(BufferedFileTransport(
+                    base_path,
+                    batch_size=batch_size,
+                    flush_interval_sec=flush_interval_sec,
+                    max_file_size_mb=max_file_size_mb,
+                ))
+            else:
+                transports.append(FileTransport(base_path))
+        if "stdout" in (transport or "").lower():
             transports.append(StdoutTransport())
         return MultiTransport(transports)
+
+    def flush(self):
+        """Flush any buffered events. Safe to call on non-buffered loggers."""
+        self.transports.flush()
+
+    def close(self):
+        """Flush and release any background flush threads."""
+        self.transports.close()
 
     def _safe_emit(self, event_dict: Dict[str, Any]):
         """Thread-safe emission - PRESERVE event-specific custom_fields"""
